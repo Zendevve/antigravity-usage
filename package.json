@@ -1,18 +1,28 @@
 {
   "name": "antigravity-usage",
   "displayName": "Antigravity Usage",
-  "publisher": "antigravity",
+  "publisher": "zendevve",
   "repository": {
     "type": "git",
     "url": "https://github.com/Zendevve/antigravity-usage.git"
   },
-  "description": "VS Code extension for monitoring AntiGravity quota",
-  "version": "0.0.7",
+  "description": "Premium AI usage dashboard for AntiGravity with burn rate tracking, exhaustion predictions, and beautiful insights",
+  "license": "MIT",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "antigravity",
+    "quota",
+    "ai",
+    "usage",
+    "dashboard",
+    "analytics"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -21,8 +31,21 @@
   "contributes": {
     "commands": [
       {
+        "command": "antigravity-quota.showDashboard",
+        "title": "Antigravity: Open Dashboard",
+        "icon": "$(dashboard)"
+      },
+      {
         "command": "antigravity-quota.showMenu",
-        "title": "Show AntiGravity Quota"
+        "title": "Antigravity: Quick Status"
+      },
+      {
+        "command": "antigravity-quota.refresh",
+        "title": "Antigravity: Refresh Quota"
+      },
+      {
+        "command": "antigravity-quota.detectPort",
+        "title": "Antigravity: Re-detect Port"
       }
     ]
   },
@@ -32,7 +55,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "node ./out/test/runTest.js"
+    "test": "node ./out/test/runTest.js",
+    "package": "npx vsce package"
   },
   "devDependencies": {
     "@types/vscode": "^1.80.0",
