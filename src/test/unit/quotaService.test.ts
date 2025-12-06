@@ -2,21 +2,21 @@ import * as assert from 'assert';
 import { QuotaService } from '../../quotaService';
 
 describe('QuotaService Test Suite', () => {
-  it('Poll returns data', async () => {
+  it('Service initializes without errors', () => {
     const service = new QuotaService();
-    const data = await service.poll();
-    assert.ok(data.length > 0, 'Should return quota data');
-    assert.strictEqual(data[0].modelName, 'Gemini 1.5 Pro');
+    assert.ok(service, 'Service should instantiate');
   });
 
-  it('Data is cached', () => {
+  it('Returns empty array when not connected', async () => {
     const service = new QuotaService();
-    // Manually trigger poll first (simulated in previous test, but new instance here)
-    // Since poll is async and we need to check internal state or result of getQuota
+    const data = await service.poll();
+    assert.ok(Array.isArray(data), 'Should return an array');
+    assert.strictEqual(data.length, 0, 'Should be empty when not connected');
+  });
 
-    // We can just rely on poll() returning data which sets the cache
-    // As defined in implementation:
-    // this._quotaData = mockData;
-    // return this._quotaData;
+  it('getQuota returns cached data', () => {
+    const service = new QuotaService();
+    const data = service.getQuota();
+    assert.ok(Array.isArray(data), 'Should return an array');
   });
 });

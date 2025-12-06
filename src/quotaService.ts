@@ -1,31 +1,38 @@
 /**
  * Quota Service
- * Fetches quota data from Antigravity API using proper headers and authentication.
- * Based on wusimpl/AntigravityQuotaWatcher implementation.
+ * Fetches and parses quota data from Antigravity API.
+ * Based on Henrik-3/AntigravityQuota implementation.
  */
 
 import * as https from 'https';
-import * as vscode from 'vscode';
 
 export interface ModelQuota {
-  modelName: string;
-  usagePercent: number;
-  resetTime?: string;
-  isPinned: boolean;
+  label: string;
+  modelId: string;
+  remainingPercent: number;
+  usedPercent: number;
+  isExhausted: boolean;
+  resetTime?: Date;
+  timeUntilReset?: string;
 }
 
-export interface QuotaData {
-  quotas: ModelQuota[];
-  promptCredits?: {
-    used: number;
-    total: number;
-  };
+export interface PromptCredits {
+  available: number;
+  monthly: number;
+  usedPercent: number;
+  remainingPercent: number;
+}
+
+export interface QuotaSnapshot {
+  timestamp: Date;
+  promptCredits?: PromptCredits;
+  models: ModelQuota[];
 }
 
 export class QuotaService {
-  private _quotaData: ModelQuota[] = [];
   private _connectPort: number | undefined;
   private _csrfToken: string | undefined;
+  private _lastSnapshot: QuotaSnapshot | undefined;
 
   constructor() { }
 
@@ -37,32 +44,44 @@ export class QuotaService {
 
   public async poll(): Promise<ModelQuota[]> {
     if (!this._connectPort || !this._csrfToken) {
-      console.warn('[QuotaService] Missing port or CSRF token, using mock data');
-      return this.getMockData();
+      console.warn('[QuotaService] Missing port or CSRF token');
+      return [];
     }
 
     try {
       console.log(`[QuotaService] Fetching quota from port ${this._connectPort}...`);
       const response = await this.makeRequest();
+      console.log('[QuotaService] Response received, parsing...');
 
-      console.log('[QuotaService] Response received:', JSON.stringify(response).substring(0, 500));
-      vscode.window.showInformationMessage('Quota data received! Check logs for details.');
+      const snapshot = this.parseResponse(response);
+      this._lastSnapshot = snapshot;
 
-      // Parse the response
-      const quotas = this.parseResponse(response);
-      this._quotaData = quotas;
-      return quotas;
+      console.log(`[QuotaService] Parsed ${snapshot.models.length} models`);
+      return snapshot.models;
 
     } catch (error: any) {
       console.error('[QuotaService] API Call Failed:', error.message);
-      vscode.window.showErrorMessage(`API Failed: ${error.message}`);
-      return this.getMockData();
+      return [];
     }
+  }
+
+  public getSnapshot(): QuotaSnapshot | undefined {
+    return this._lastSnapshot;
+  }
+
+  public getQuota(): ModelQuota[] {
+    return this._lastSnapshot?.models || [];
   }
 
   private makeRequest(): Promise<any> {
     return new Promise((resolve, reject) => {
-      const requestBody = JSON.stringify({});
+      const requestBody = JSON.stringify({
+        metadata: {
+          ideName: 'antigravity',
+          extensionName: 'antigravity',
+          locale: 'en'
+        }
+      });
 
       const options: https.RequestOptions = {
         hostname: '127.0.0.1',
@@ -78,8 +97,6 @@ export class QuotaService {
         rejectUnauthorized: false,
         timeout: 10000
       };
-
-      console.log(`[QuotaService] Request: https://127.0.0.1:${this._connectPort}${options.path}`);
 
       const req = https.request(options, (res) => {
         let data = '';
@@ -108,68 +125,83 @@ export class QuotaService {
     });
   }
 
-  private parseResponse(response: any): ModelQuota[] {
-    // Try to extract quota info from the response
-    // Structure may vary, so we handle multiple possible formats
-    const quotas: ModelQuota[] = [];
+  private parseResponse(data: any): QuotaSnapshot {
+    const userStatus = data.userStatus || data;
+    const planStatus = userStatus.planStatus;
+    const cascadeData = userStatus.cascadeModelConfigData;
 
-    try {
-      // Check for promptCreditsInfo
-      if (response.promptCreditsInfo) {
-        const credits = response.promptCreditsInfo;
-        const used = parseInt(credits.used || '0', 10);
-        const total = parseInt(credits.total || '1', 10);
-        const percent = total > 0 ? Math.round((used / total) * 100) : 0;
+    // Parse prompt credits
+    let promptCredits: PromptCredits | undefined;
+    if (planStatus) {
+      const planInfo = planStatus.planInfo;
+      const available = Number(planStatus.availablePromptCredits || 0);
+      const monthly = Number(planInfo?.monthlyPromptCredits || 0);
 
-        quotas.push({
-          modelName: 'Prompt Credits',
-          usagePercent: percent,
-          isPinned: true
-        });
+      if (monthly > 0) {
+        const used = monthly - available;
+        promptCredits = {
+          available,
+          monthly,
+          usedPercent: Math.round((used / monthly) * 100),
+          remainingPercent: Math.round((available / monthly) * 100)
+        };
+        console.log(`[QuotaService] Prompt Credits: ${available}/${monthly} (${promptCredits.remainingPercent}% remaining)`);
       }
-
-      // Check for modelQuotaInfo array
-      if (response.modelQuotaInfo && Array.isArray(response.modelQuotaInfo)) {
-        for (const model of response.modelQuotaInfo) {
-          const name = model.modelName || model.modelId || 'Unknown Model';
-          const used = parseInt(model.used || '0', 10);
-          const total = parseInt(model.total || model.limit || '1', 10);
-          const percent = total > 0 ? Math.round((used / total) * 100) : 0;
-
-          quotas.push({
-            modelName: name,
-            usagePercent: percent,
-            isPinned: false
-          });
-        }
-      }
-
-      // If we got quotas, return them
-      if (quotas.length > 0) {
-        return quotas;
-      }
-
-      // Fallback: log the full response for debugging
-      console.log('[QuotaService] Response structure:', Object.keys(response));
-      vscode.window.showInformationMessage(`Response keys: ${Object.keys(response).join(', ')}`);
-
-    } catch (e) {
-      console.error('[QuotaService] Parse error:', e);
     }
 
-    return this.getMockData();
+    // Parse model quotas from cascadeModelConfigData.clientModelConfigs
+    const models: ModelQuota[] = [];
+    const rawModels = cascadeData?.clientModelConfigs || [];
+
+    console.log(`[QuotaService] Found ${rawModels.length} model configs`);
+
+    for (const model of rawModels) {
+      // Only include models with quota info
+      if (!model.quotaInfo) {
+        continue;
+      }
+
+      const label = model.label || 'Unknown Model';
+      const modelId = model.modelOrAlias?.model || model.modelOrAlias?.alias || 'unknown';
+      const remainingFraction = model.quotaInfo.remainingFraction ?? 1;
+      const remainingPercent = Math.round(remainingFraction * 100);
+      const usedPercent = 100 - remainingPercent;
+      const isExhausted = remainingFraction === 0;
+
+      let resetTime: Date | undefined;
+      let timeUntilReset: string | undefined;
+
+      if (model.quotaInfo.resetTime) {
+        resetTime = new Date(model.quotaInfo.resetTime);
+        const diff = resetTime.getTime() - Date.now();
+        timeUntilReset = this.formatTime(diff);
+      }
+
+      models.push({
+        label,
+        modelId,
+        remainingPercent,
+        usedPercent,
+        isExhausted,
+        resetTime,
+        timeUntilReset
+      });
+
+      console.log(`[QuotaService] Model: ${label} - ${remainingPercent}% remaining (${timeUntilReset || 'no reset'})`);
+    }
+
+    return {
+      timestamp: new Date(),
+      promptCredits,
+      models
+    };
   }
 
-  public getQuota(): ModelQuota[] {
-    return this._quotaData;
-  }
-
-  private getMockData(): ModelQuota[] {
-    this._quotaData = [
-      { modelName: 'Gemini 1.5 Pro', usagePercent: 15, isPinned: true },
-      { modelName: 'Claude 3.5 Sonnet', usagePercent: 85, isPinned: false },
-      { modelName: 'GPT-4o', usagePercent: 45, isPinned: false }
-    ];
-    return this._quotaData;
+  private formatTime(ms: number): string {
+    if (ms <= 0) return 'Ready';
+    const mins = Math.ceil(ms / 60000);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    return `${hours}h ${mins % 60}m`;
   }
 }
