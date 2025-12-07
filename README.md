@@ -52,7 +52,7 @@ This extension operates by probing the local AntiGravity server (usually on port
 ## 📦 Installation
 
 ### Marketplace
-1.  Open **VS Code**.
+1.  Open **Antigravity**.
 2.  Go to the **Extensions** view (`Ctrl+Shift+X`).
 3.  Search for **"Antigravity Usage"**.
 4.  Click **Install**.
