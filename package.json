@@ -8,7 +8,7 @@
   },
   "description": "Premium AI usage dashboard for AntiGravity with burn rate tracking, exhaustion predictions, and beautiful insights",
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -28,6 +28,9 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "extensionKind": [
+    "ui"
+  ],
   "contributes": {
     "commands": [
       {
