@@ -16,7 +16,7 @@ export class StatusBarManager implements vscode.Disposable {
       vscode.StatusBarAlignment.Right,
       100
     );
-    this.statusBarItem.command = 'antigravity-quota.showDashboard';
+    this.statusBarItem.command = 'workbench.view.extension.antigravity-usage-container';
     this.statusBarItem.text = 'AG';
     this.statusBarItem.tooltip = 'Antigravity Usage - Loading...';
     this.statusBarItem.show();
@@ -66,8 +66,8 @@ export class StatusBarManager implements vscode.Disposable {
       return;
     }
 
-    // Find primary model (active or lowest remaining)
-    const primary = models.find(m => m.insights.isActive) || models[0];
+    // Find primary model (sorted by priority: Pinned > Active > Lowest)
+    const primary = models[0];
     const shortName = this.getShortName(primary.label);
 
     // Clean, minimal display: "Sonnet 75%"

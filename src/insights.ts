@@ -4,7 +4,8 @@
  * Unique feature that differentiates us from competitors.
  */
 
-import { ModelQuota, QuotaSnapshot, PromptCredits } from './quotaService';
+import { ModelQuota, QuotaSnapshot } from './quotaService';
+import * as vscode from 'vscode';
 
 export interface UsageInsight {
   burnRate: number;              // % per hour
@@ -14,6 +15,7 @@ export interface UsageInsight {
   trendDirection: 'stable' | 'decreasing' | 'warning' | 'critical';
   sessionUsage: number;          // % used in current session
   isActive: boolean;             // Is this the likely active model
+  isPinned: boolean;             // Is this model pinned by user
   historyData: number[];         // Last N data points for sparkline
 }
 
@@ -27,6 +29,7 @@ export interface SnapshotWithInsights extends QuotaSnapshot {
   healthLabel: string;           // "Excellent" "Good" "Low" "Critical"
   sessionStartTime: Date;
   totalSessionUsage: number;     // Average session usage across all models
+  usageBuckets: UsageBucket[];   // 24h history for bar chart
 }
 
 interface HistoryEntry {
@@ -34,22 +37,67 @@ interface HistoryEntry {
   models: Map<string, number>;   // modelId -> remainingPercent
 }
 
-const MAX_HISTORY = 20;
+/** Stored format for history (Map not directly stringifiable) */
+interface StoredHistoryEntry {
+  timestamp: number;
+  models: Record<string, number>;
+}
+
+export interface UsageBucketItem {
+  groupId: string;
+  usage: number; // Consumed percentage
+}
+
+export interface UsageBucket {
+  startTime: number;
+  endTime: number;
+  items: UsageBucketItem[];
+}
+
+const STORAGE_KEY = 'antigravity.quotaHistory_v2';
+const MAX_HISTORY_HOURS = 24;
 
 export class InsightsService {
   private history: HistoryEntry[] = [];
   private sessionStartTime: Date;
   private sessionStartQuotas: Map<string, number> = new Map();
   private lastActiveModelId: string | undefined;
+  private globalState: vscode.Memento;
 
-  constructor() {
+  constructor(globalState: vscode.Memento) {
+    this.globalState = globalState;
     this.sessionStartTime = new Date();
+    this.loadHistory();
+  }
+
+  private loadHistory() {
+    const stored = this.globalState.get<StoredHistoryEntry[]>(STORAGE_KEY, []);
+    const cutoff = Date.now() - MAX_HISTORY_HOURS * 60 * 60 * 1000;
+
+    this.history = stored
+      .filter(e => e.timestamp > cutoff)
+      .map(e => ({
+        timestamp: new Date(e.timestamp),
+        models: new Map(Object.entries(e.models))
+      }));
+  }
+
+  private async saveHistory() {
+    const cutoff = Date.now() - MAX_HISTORY_HOURS * 60 * 60 * 1000;
+    const toStore: StoredHistoryEntry[] = this.history
+      .filter(e => e.timestamp.getTime() > cutoff)
+      .map(e => ({
+        timestamp: e.timestamp.getTime(),
+        models: Object.fromEntries(e.models)
+      }));
+
+    await this.globalState.update(STORAGE_KEY, toStore);
   }
 
   /**
    * Record a new snapshot and return enriched data with insights
    */
-  public analyze(snapshot: QuotaSnapshot): SnapshotWithInsights {
+  public analyze(snapshot: QuotaSnapshot, pinnedModels: string[] = []): SnapshotWithInsights {
     // Record history
     this.recordSnapshot(snapshot);
 
@@ -58,11 +106,13 @@ export class InsightsService {
 
     // Analyze each model
     const modelsWithInsights = snapshot.models.map(model =>
-      this.analyzeModel(model, snapshot)
+      this.analyzeModel(model, snapshot, pinnedModels)
     );
 
-    // Sort by: 1) Active model first, 2) Lowest remaining %
+    // Sort by: 1) Pinned models first, 2) Active model, 3) Lowest remaining %
     modelsWithInsights.sort((a, b) => {
+      if (a.insights.isPinned && !b.insights.isPinned) return -1;
+      if (!a.insights.isPinned && b.insights.isPinned) return 1;
       if (a.insights.isActive && !b.insights.isActive) return -1;
       if (!a.insights.isActive && b.insights.isActive) return 1;
       return a.remainingPercent - b.remainingPercent;
@@ -82,7 +132,8 @@ export class InsightsService {
       overallHealth,
       healthLabel,
       sessionStartTime: this.sessionStartTime,
-      totalSessionUsage: Math.round(totalSessionUsage)
+      totalSessionUsage: Math.round(totalSessionUsage),
+      usageBuckets: this.calculateUsageBuckets(24 * 60, 60) // 24 hours, 60 min buckets
     };
   }
 
@@ -97,11 +148,7 @@ export class InsightsService {
     }
 
     this.history.push(entry);
-
-    // Keep only the last N entries
-    if (this.history.length > MAX_HISTORY) {
-      this.history.shift();
-    }
+    this.saveHistory(); // Auto-save on update
   }
 
   private initSessionStart(snapshot: QuotaSnapshot): void {
@@ -112,10 +159,11 @@ export class InsightsService {
     }
   }
 
-  private analyzeModel(model: ModelQuota, snapshot: QuotaSnapshot): ModelWithInsights {
+  private analyzeModel(model: ModelQuota, snapshot: QuotaSnapshot, pinnedModels: string[]): ModelWithInsights {
     const burnRate = this.calculateBurnRate(model.modelId);
     const sessionUsage = this.calculateSessionUsage(model.modelId, model.remainingPercent);
     const isActive = this.detectActiveModel(model, snapshot);
+    const isPinned = this.isPinned(model.label, pinnedModels);
 
     let predictedExhaustion: Date | undefined;
     let predictedExhaustionLabel: string | undefined;
@@ -147,13 +195,15 @@ export class InsightsService {
         trendDirection,
         sessionUsage,
         isActive,
+        isPinned,
         historyData: this.getHistoryData(model.modelId)
       }
     };
   }
 
   private getHistoryData(modelId: string): number[] {
-    return this.history.map(entry => entry.models.get(modelId) ?? 100);
+    // Return last 20 points
+    return this.history.slice(-20).map(entry => entry.models.get(modelId) ?? 100);
   }
 
   private calculateBurnRate(modelId: string): number {
@@ -183,7 +233,6 @@ export class InsightsService {
   }
 
   private detectActiveModel(model: ModelQuota, snapshot: QuotaSnapshot): boolean {
-    // Strategy 1: Highest burn rate = most actively used
     if (this.history.length >= 2) {
       const burnRates = snapshot.models.map(m => ({
         id: m.modelId,
@@ -191,16 +240,14 @@ export class InsightsService {
       }));
 
       const maxBurnRate = Math.max(...burnRates.map(b => b.rate));
-      if (maxBurnRate > 0.5) { // Threshold: at least 0.5% per hour
+      if (maxBurnRate > 0.5) {
         const activeId = burnRates.find(b => b.rate === maxBurnRate)?.id;
         if (activeId === model.modelId) return true;
       }
     }
 
-    // Strategy 2: Last known active model
     if (this.lastActiveModelId === model.modelId) return true;
 
-    // Strategy 3: Lowest remaining (most used) as fallback
     const lowestRemaining = Math.min(...snapshot.models.map(m => m.remainingPercent));
     if (model.remainingPercent === lowestRemaining && lowestRemaining < 90) {
       return true;
@@ -243,7 +290,6 @@ export class InsightsService {
       return { overallHealth: 100, healthLabel: 'Unknown' };
     }
 
-    // Weighted average: active model counts more
     let totalWeight = 0;
     let weightedSum = 0;
 
@@ -265,8 +311,70 @@ export class InsightsService {
   }
 
   /**
-   * Get a brief status string for the status bar
+   * Calculate usage buckets for bar charts (consumption deltas)
    */
+  public calculateUsageBuckets(displayMinutes: number, bucketMinutes: number): UsageBucket[] {
+    const now = Date.now();
+    const startTime = now - displayMinutes * 60 * 1000;
+    const buckets: UsageBucket[] = [];
+    const bucketCount = Math.ceil(displayMinutes / bucketMinutes);
+
+    // Filter history to relevant range
+    const relevantHistory = this.history.filter(e => e.timestamp.getTime() > startTime - bucketMinutes * 60 * 1000);
+
+    // Find all model IDs
+    const modelIds = new Set<string>();
+    relevantHistory.forEach(e => e.models.forEach((_, key) => modelIds.add(key)));
+
+    for (let i = 0; i < bucketCount; i++) {
+      const bucketStart = startTime + i * bucketMinutes * 60 * 1000;
+      const bucketEnd = Math.min(bucketStart + bucketMinutes * 60 * 1000, now);
+
+      const pointsInBucket = relevantHistory.filter(e => {
+        const t = e.timestamp.getTime();
+        return t >= bucketStart && t < bucketEnd;
+      });
+
+      // Determine start and end values for this bucket
+      let startEntry: HistoryEntry | undefined;
+      let endEntry: HistoryEntry | undefined;
+
+      // Try to find a point just before bucketStart
+      const pointsBefore = relevantHistory.filter(e => e.timestamp.getTime() < bucketStart);
+      if (pointsBefore.length > 0) {
+        startEntry = pointsBefore[pointsBefore.length - 1];
+        endEntry = pointsInBucket.length > 0 ? pointsInBucket[pointsInBucket.length - 1] : undefined;
+      } else if (pointsInBucket.length >= 2) {
+        startEntry = pointsInBucket[0];
+        endEntry = pointsInBucket[pointsInBucket.length - 1];
+      }
+
+      const items: UsageBucketItem[] = [];
+
+      if (startEntry && endEntry) {
+        for (const id of modelIds) {
+          const startVal = startEntry.models.get(id);
+          const endVal = endEntry.models.get(id);
+
+          if (startVal !== undefined && endVal !== undefined) {
+            const used = startVal - endVal;
+            if (used > 0) {
+              items.push({ groupId: id, usage: used });
+            }
+          }
+        }
+      }
+
+      buckets.push({
+        startTime: bucketStart,
+        endTime: bucketEnd,
+        items
+      });
+    }
+
+    return buckets;
+  }
+
   public getStatusSummary(snapshot: SnapshotWithInsights): string {
     const activeModel = snapshot.modelsWithInsights.find(m => m.insights.isActive);
     if (activeModel) {
@@ -276,8 +384,6 @@ export class InsightsService {
   }
 
   private getShortName(label: string): string {
-    // Claude Sonnet 4.5 -> Claude S4.5
-    // Gemini 3 Pro (High) -> G3P-H
     if (label.includes('Claude')) {
       const match = label.match(/Claude\s+(\w+)\s*([\d.]+)?/);
       if (match) {
@@ -300,7 +406,13 @@ export class InsightsService {
     if (label.includes('GPT') || label.includes('O3')) {
       return 'GPT';
     }
-    // Fallback: first word
     return label.split(' ')[0].substring(0, 6);
+  }
+
+  private isPinned(label: string, pinnedModels: string[]): boolean {
+    if (!pinnedModels || pinnedModels.length === 0) return false;
+    return pinnedModels.some(pin =>
+      label.toLowerCase().includes(pin.toLowerCase())
+    );
   }
 }

@@ -8,7 +8,7 @@
   },
   "description": "Premium AI usage dashboard for AntiGravity with burn rate tracking, exhaustion predictions, and beautiful insights",
   "license": "MIT",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -32,6 +32,25 @@
     "ui"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "antigravity-usage-container",
+          "title": "Antigravity Usage",
+          "icon": "resources/dashboard.svg"
+        }
+      ]
+    },
+    "views": {
+      "antigravity-usage-container": [
+        {
+          "id": "antigravity-usage.quotaView",
+          "name": "Quota",
+          "type": "webview",
+          "icon": "resources/dashboard.svg"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "antigravity-quota.showDashboard",
@@ -49,6 +68,23 @@
       {
         "command": "antigravity-quota.detectPort",
         "title": "Antigravity: Re-detect Port"
+      },
+      {
+        "command": "antigravity-quota.pinModel",
+        "title": "Antigravity: Pin Model..."
+      },
+      {
+        "command": "antigravity-quota.unpinModel",
+        "title": "Antigravity: Unpin Model..."
+      },
+      {
+        "command": "antigravity-quota.cleanCache",
+        "title": "Antigravity: Clean Cache",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "antigravity-quota.manageCache",
+        "title": "Antigravity: Manage Brain Tasks..."
       }
     ],
     "configuration": {
@@ -67,6 +103,14 @@
           "minimum": 30,
           "maximum": 300,
           "description": "How often to refresh quota data (in seconds)"
+        },
+        "antigravity.pinnedModels": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "Model names to pin (e.g. 'Claude Sonnet', 'Gemini Pro'). Pinned models appear first in status bar and sidebar."
         }
       }
     }
