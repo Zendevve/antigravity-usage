@@ -1,5 +1,5 @@
 <div align="center">
-    <img src="resources/dashboard.svg" width="128" height="128" alt="Antigravity Usage Icon"/>
+    <img src="resources/icon.png" width="128" height="128" alt="Antigravity Usage Icon"/>
 </div>
 
 <div align="center">
@@ -130,6 +130,6 @@ Built with **MCAF** (Managed Code Coding AI Framework).
 <div align="center">
     <hr>
     <a href="https://github.com/Zendevve">
-        <img src="resources/dashboard.svg" width="64" height="64" alt="Footer Icon"/>
+        <img src="resources/icon.png" width="64" height="64" alt="Footer Icon"/>
     </a>
 </div>
