@@ -1,32 +1,48 @@
-# AntiGravity Quota - AGENTS.md
+# Antigravity Usage - Agent Guidelines (MCAF)
 
-## Context
-This repository contains the "AntiGravity Quota" VS Code extension.
-It follows the MCAF (Managed Code Coding AI Framework).
+> **Managed Code Coding AI Framework**
+> This document defines how AI agents must interact with this repository.
 
-## Development Flow
-1. **Describe**: Update `docs/Features/` before coding.
-2. **Plan**: Create `implementation_plan.md` and get approval.
-3. **Implement**: Write code and tests together.
-4. **Verify**: Run tests and static analysis.
-5. **Document**: Update docs to reflect reality.
+## 1. Core Philosophy: Laws of UX
 
-## Maintainer Preferences
-- Use TypeScript for all extension code.
-- Prefer functional patterns over heavy class inheritance where possible, but adhere to VS Code API patterns.
-- Keep the status bar item minimal.
-- "Quota" refers to the available usage limit.
+All design decisions must be justified by specific psychological principles:
+- **Aesthetic-Usability Effect**: Beauty = Usability.
+- **Hick's Law**: Minimize choices.
+- **Miller's Law**: Chunk information (max 5 items).
+- **Doherty Threshold**: <400ms feedback loop.
 
-## Testing Discipline
-- **Unit Tests**: `npm run test`
-- **Integration/E2E**: `npm run test:e2e` (to be defined)
-- **Linting**: `npm run lint`
+## 2. Personal Repository Guidelines (PRG)
 
-## Commands
+### Documentation
+- `docs/Features/`: Functional specs.
+- `docs/ADR/`: Architectural decisions.
+- `docs/Development/`: Setup and guides.
+
+### Development Cycle
+1. **Plan**: Update `task.md` and `implementation_plan.md`.
+2. **Document**: Write/update feature docs in `docs/`.
+3. **Test**: Create verification steps.
+4. **Implement**: Write code.
+5. **Verify**: Run tests and lint.
+
+## 3. Operational Rules
+
+### Testing Discipline
+- Run `npm run compile` to check Typescript errors.
+- Run `npm run lint` to enforce style.
+- Run `npm run test` for logic verification.
+
+### Coding Standards
+- **Strict TypeScript**: No `any`. Explicit interfaces.
+- **Functional Core, Imperative Shell**: Logic in `core/` (pure), side effects in `extension.ts` or `ui/`.
+- **Single Source of Truth**: State lives in `QuotaStore`.
+
+### Communication
+- **Task Boundaries**: precise update of status.
+- **Artifacts**: Keep `task.md` live.
+
+## 4. Commands & Workflows
+
+- **/design-pillars**: (Deprecated) See Laws of UX.
 - **Build**: `npm run compile`
-- **Test**: `npm run test`
 - **Package**: `npx vsce package`
-
-## Self-Learning
-- If build/test commands fail, analyze the error output before asking the user.
-- If specific VS Code API quirks are discovered, document them in `docs/Development/vscode-quirks.md`.

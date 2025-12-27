@@ -15,6 +15,7 @@
   "exclude": [
     "node_modules",
     ".vscode-test",
-    "refs"
+    "refs",
+    "legacy"
   ]
 }

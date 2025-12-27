@@ -8,13 +8,13 @@
   },
   "description": "Premium AI usage dashboard for AntiGravity with burn rate tracking, exhaustion predictions, and beautiful insights",
   "license": "MIT",
-  "version": "0.8.1",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Other",
-    "Visualization"
+    "Visualization",
+    "Other"
   ],
   "keywords": [
     "antigravity",
@@ -44,7 +44,7 @@
     "views": {
       "antigravity-usage-container": [
         {
-          "id": "antigravity-usage.quotaView",
+          "id": "antigravity.quotaView",
           "name": "Quota",
           "type": "webview",
           "icon": "resources/dashboard.svg"
@@ -53,51 +53,40 @@
     },
     "commands": [
       {
-        "command": "antigravity-quota.showMenu",
-        "title": "Antigravity: Quick Status"
-      },
-      {
-        "command": "antigravity-quota.refresh",
-        "title": "Antigravity: Refresh Quota"
-      },
-      {
-        "command": "antigravity-quota.detectPort",
-        "title": "Antigravity: Re-detect Port"
-      },
-      {
-        "command": "antigravity-quota.pinModel",
-        "title": "Antigravity: Pin Model..."
-      },
-      {
-        "command": "antigravity-quota.unpinModel",
-        "title": "Antigravity: Unpin Model..."
-      },
-      {
-        "command": "antigravity-quota.cleanCache",
-        "title": "Antigravity: Clean Cache",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "antigravity-quota.manageCache",
-        "title": "Antigravity: Manage Brain Tasks..."
-      },
-      {
-        "command": "antigravity-quota.flushContext",
-        "title": "Antigravity: Flush Active Context",
+        "command": "antigravity.refreshQuota",
+        "title": "Antigravity: Refresh Quota",
         "icon": "$(refresh)"
       },
       {
-        "command": "antigravity-quota.devPreview",
-        "title": "Antigravity: Dev Preview (Test UI States)"
-      }
-    ],
-    "keybindings": [
+        "command": "antigravity.openDashboard",
+        "title": "Antigravity: Open Dashboard",
+        "icon": "$(graph)"
+      },
       {
-        "command": "antigravity-quota.flushContext",
-        "key": "ctrl+shift+alt+f",
-        "mac": "cmd+shift+alt+f"
+        "command": "antigravity.openSidebar",
+        "title": "Antigravity: Open Sidebar",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "antigravity.clearHistory",
+        "title": "Antigravity: Clear History",
+        "icon": "$(trash)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "antigravity.refreshQuota",
+          "when": "view == antigravity.quotaView",
+          "group": "navigation"
+        },
+        {
+          "command": "antigravity.openDashboard",
+          "when": "view == antigravity.quotaView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Antigravity Usage",
       "properties": {
@@ -115,11 +104,6 @@
           "maximum": 300,
           "description": "How often to refresh quota data (in seconds)"
         },
-        "antigravity.adaptivePolling": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically adjust refresh rate based on editor activity (faster during active use, slower when idle)"
-        },
         "antigravity.displayStyle": {
           "type": "string",
           "default": "percentage",
@@ -128,35 +112,7 @@
             "progressBar",
             "dots"
           ],
-          "enumDescriptions": [
-            "Show percentage (e.g. 'Sonnet 75%')",
-            "Show progress bar (e.g. 'Sonnet ████░░')",
-            "Show dots (e.g. 'Sonnet ●●●○○')"
-          ],
           "description": "How to display quota in status bar"
-        },
-        "antigravity.enableGrouping": {
-          "type": "boolean",
-          "default": false,
-          "description": "Group models with identical quota status (same %, same reset time)"
-        },
-        "antigravity.dashboardTheme": {
-          "type": "string",
-          "default": "modern",
-          "enum": [
-            "modern",
-            "minimal"
-          ],
-          "enumDescriptions": [
-            "Modern Dark - Semi-arc gauge, gradients, premium feel",
-            "Native Minimal - Pure VS Code styling, compact, invisible"
-          ],
-          "description": "Dashboard visual style"
-        },
-        "antigravity.showFlowCredits": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show Flow Credits (execution) alongside Prompt Credits (reasoning)"
         },
         "antigravity.pinnedModels": {
           "type": "array",
@@ -164,7 +120,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Model names to pin (e.g. 'Claude Sonnet', 'Gemini Pro'). Pinned models appear first in status bar and sidebar."
+          "description": "Model names to pin (e.g. 'Claude Sonnet'). Pinned models appear first."
         }
       }
     }

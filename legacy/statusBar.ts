@@ -79,9 +79,23 @@ export class StatusBarManager implements vscode.Disposable {
     const shortName = this.getShortName(primary.label);
 
     // Clean, minimal display based on configured style
+    // Dynamic Status Bar Text
     const config = vscode.workspace.getConfiguration('antigravity');
     const style = config.get<DisplayStyle>('displayStyle', 'percentage');
-    this.statusBarItem.text = this.formatDisplay(shortName, primary.remainingPercent, style);
+
+    // Determine icon based on status/activity
+    let icon = '$(pulse)'; // Default active pulse
+    if (primary.isExhausted) icon = '$(error)';
+    else if (primary.remainingPercent < 15) icon = '$(alert)';
+    else if (primary.remainingPercent < 25) icon = '$(warning)';
+
+    // User requested format: "$(pulse) 28% Usage"
+    // We'll respect the style preference but default to the requested format if 'percentage' is selected
+    if (style === 'percentage') {
+      this.statusBarItem.text = `${icon} ${primary.remainingPercent}% Usage`;
+    } else {
+      this.statusBarItem.text = this.formatDisplay(shortName, primary.remainingPercent, style);
+    }
 
     // Background only for critical situations
     if (primary.isExhausted || primary.remainingPercent < 15) {
@@ -176,42 +190,54 @@ export class StatusBarManager implements vscode.Disposable {
   }
 
   /**
-   * Build rich markdown tooltip with credits and models
+   * Build rich markdown tooltip with Live Session and Weekly Stats
    */
   private buildMarkdownTooltip(snapshot: SnapshotWithInsights): vscode.MarkdownString {
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
     md.supportHtml = true;
 
-    // Credits section
-    const config = vscode.workspace.getConfiguration('antigravity');
-    const showFlow = config.get<boolean>('showFlowCredits', true);
+    // Header
+    md.appendMarkdown(`**CUStats** ${snapshot.healthLabel ? `(${snapshot.healthLabel})` : ''}\n\n`);
 
-    if (snapshot.promptCredits || snapshot.flowCredits) {
-      md.appendMarkdown('### Credits\n');
-      if (snapshot.promptCredits) {
-        const p = snapshot.promptCredits;
-        md.appendMarkdown(`**Prompt** (reasoning): ${p.available.toLocaleString()} / ${p.monthly.toLocaleString()} (${p.remainingPercent}%)\n\n`);
-      }
-      if (showFlow && snapshot.flowCredits) {
-        const f = snapshot.flowCredits;
-        md.appendMarkdown(`**Flow** (execution): ${f.available.toLocaleString()} / ${f.monthly.toLocaleString()} (${f.remainingPercent}%)\n\n`);
+    // Live Session Section
+    const activeModel = snapshot.modelsWithInsights.find(m => m.insights.isActive);
+    if (activeModel) {
+      md.appendMarkdown('### 🔴 Live Session\n');
+      md.appendMarkdown(`**${activeModel.label}**\n`);
+
+      const used = (100 - activeModel.remainingPercent).toFixed(1);
+      md.appendMarkdown(`Usage: **${used}%** · Remaining: **${activeModel.remainingPercent}%**\n\n`);
+
+      if (activeModel.insights.burnRate > 0) {
+        md.appendMarkdown(`Burn Rate: ${activeModel.insights.burnRate.toFixed(2)}%/hr\n`);
+        if (activeModel.insights.predictedExhaustionLabel) {
+          md.appendMarkdown(`Est. Exhaustion: ${activeModel.insights.predictedExhaustionLabel}\n`);
+        }
       }
       md.appendMarkdown('---\n');
     }
 
-    // Model table
-    md.appendMarkdown('### Models\n\n');
-    md.appendMarkdown('| Model | Quota | Reset |\n');
-    md.appendMarkdown('|-------|-------|-------|\n');
+    // Weekly Limits (Models)
+    md.appendMarkdown('### 📅 Weekly Limits\n\n');
+    md.appendMarkdown('| Model | Status | Remaining |\n');
+    md.appendMarkdown('| :--- | :--- | :---: |\n');
 
     for (const model of snapshot.modelsWithInsights) {
-      const status = model.isExhausted ? '🔴' : (model.remainingPercent < 25 ? '🟡' : '🟢');
-      const reset = model.timeUntilReset || '—';
-      md.appendMarkdown(`| ${status} ${model.label} | ${model.remainingPercent}% | ${reset} |\n`);
+      const statusIcon = model.isExhausted ? '🔴' : (model.remainingPercent < 25 ? '🟡' : '🟢');
+      const statusText = model.isExhausted ? 'Exhausted' : (model.remainingPercent < 25 ? 'Caution' : 'Good');
+      md.appendMarkdown(`| ${model.label} | ${statusIcon} ${statusText} | **${model.remainingPercent}%** |\n`);
     }
 
-    md.appendMarkdown('\n*Click for dashboard*');
+    // Credits (Optional)
+    if (snapshot.promptCredits) {
+      md.appendMarkdown('\n---\n');
+      const p = snapshot.promptCredits;
+      md.appendMarkdown(`**Credits**: ${p.available.toLocaleString()} / ${p.monthly.toLocaleString()}\n`);
+    }
+
+    md.appendMarkdown('\n$(layout-sidebar-right) **Click to open sidebar**\n\n');
+    md.appendMarkdown('[$(dashboard) Open Full Dashboard](command:antigravity-quota.openDashboard)');
     return md;
   }
 
